@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Мини-гонки</title>
+<style>
+  body {
+    margin: 0;
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+    color: #fff;
+  }
+  canvas {
+    border: 2px solid #444;
+    border-radius: 8px;
+    background: #2c3e50;
+  }
+  .info {
+    margin-top: 10px;
+    font-size: 16px;
+    color: #ccc;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="400" height="600"></canvas>
+<div class="info">Управление: ← → или A/D. Избегайте машин!</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const W = canvas.width, H = canvas.height;
+const roadLeft = 60, roadRight = W - 60;
+
+// Игрок
+const car = { x: W / 2, y: H - 80, w: 40, h: 70, speed: 0 };
+
+let obstacles = [];   // встречные машины
+let lines = [];       // разметка дороги
+let score = 0;
+let speedBase = 3;
+let gameOver = false;
+let started = false;
+
+// Разметка
+for (let i = 0; i < 10; i++) lines.push({ y: i * 60 });
+
+// Управление
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (!started) started = true;
+  if (gameOver && e.key === 'Enter') reset();
+});
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+// Сенсорное управление для телефона
+canvas.addEventListener('touchmove', e => {
+  const rect = canvas.getBoundingClientRect();
+  car.x = e.touches[0].clientX - rect.left;
+}, { passive: true });
+
+function reset() {
+  obstacles = [];
+  score = 0;
+  speedBase = 3;
+  car.x = W / 2;
+  gameOver = false;
+}
+
+function spawnObstacle() {
+  const lane = roadLeft + 20 + Math.random() * (roadRight - roadLeft - 80);
+  obstacles.push({ x: lane, y: -80, w: 40, h: 70 });
+}
+
+function drawCar(x, y, w, h, bodyColor) {
+  // кузов
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath();
+  ctx.roundRect(x - w / 2, y - h / 2, w, h, 8);
+  ctx.fill();
+  // стёкла
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillRect(x - w / 2 + 6, y - h / 2 + 10, w - 12, 14);
+  ctx.fillRect(x - w / 2 + 6, y + h / 2 - 22, w - 12, 14);
+  // колёса
+  ctx.fillStyle = '#111';
+  ctx.fillRect(x - w / 2 - 4, y - h / 2 + 8, 5, 16);
+  ctx.fillRect(x + w / 2 - 1, y - h / 2 + 8, 5, 16);
+  ctx.fillRect(x - w / 2 - 4, y + h / 2 - 24, 5, 16);
+  ctx.fillRect(x + w / 2 - 1, y + h / 2 - 24, 5, 16);
+}
+
+function update() {
+  if (!started || gameOver) return;
+
+  const speed = speedBase + score / 500;
+
+  // движение игрока
+  if (keys['ArrowLeft'] || keys['a'] || keys['ф']) car.x -= 6;
+  if (keys['ArrowRight'] || keys['d'] || keys['в']) car.x += 6;
+  car.x = Math.max(roadLeft + car.w / 2, Math.min(roadRight - car.w / 2, car.x));
+
+  // разметка
+  lines.forEach(l => {
+    l.y += speed;
+    if (l.y > H) l.y -= H;
+  });
+
+  // препятствия
+  if (Math.random() < 0.02 + score / 20000) spawnObstacle();
+  obstacles.forEach(o => o.y += speed);
+  obstacles = obstacles.filter(o => o.y < H + 80);
+
+  // столкновения
+  for (const o of obstacles) {
+    if (Math.abs(car.x - o.x) < (car.w + o.w) / 2 - 4 &&
+        Math.abs(car.y - o.y) < (car.h + o.h) / 2 - 4) {
+      gameOver = true;
+    }
+  }
+
+  score += 1;
+}
+
+function draw() {
+  // дорога
+  ctx.fillStyle = '#2c3e50';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(roadLeft - 10, 0, roadRight - roadLeft + 20, H);
+
+  // обочина-разметка
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(roadLeft - 12, 0, 4, H);
+  ctx.fillRect(roadRight + 8, 0, 4, H);
+
+  // прерывистая разметка
+  ctx.fillStyle = '#f1c40f';
+  lines.forEach(l => {
+    ctx.fillRect(W / 2 - 3, l.y, 6, 30);
+  });
+
+  // препятствия
+  obstacles.forEach(o => drawCar(o.x, o.y, o.w, o.h, '#e74c3c'));
+
+  // игрок
+  drawCar(car.x, car.y, car.w, car.h, '#3498db');
+
+  // счёт
+  ctx.fillStyle = '#fff';
+  ctx.font = '20px Arial';
+  ctx.fillText('Счёт: ' + Math.floor(score / 10), 12, 28);
+
+  // заставки
+  if (!started) {
+    overlay('МИНИ-ГОНКИ', 'Нажмите любую клавишу');
+  } else if (gameOver) {
+    overlay('АВАРИЯ!', 'Счёт: ' + Math.floor(score / 10) + ' — Enter для рестарта');
+  }
+}
+
+function overlay(title, subtitle) {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, H / 2 - 70, W, 120);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 32px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, W / 2, H / 2 - 15);
+  ctx.font = '16px Arial';
+  ctx.fillText(subtitle, W / 2, H / 2 + 20);
+  ctx.textAlign = 'left';
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>
